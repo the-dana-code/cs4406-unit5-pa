@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Methane Molecule Visualization</title>
+    <style>
+        /* Reset default browser margins and hide overflow to ensure full-screen canvas */
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+
+        /* Style for the overlay text displaying the molecule's chemical formula */
+        #overlay-text {
+            position: absolute;
+            bottom: 20px;          /* Position the text slightly above the bottom of the window */
+            width: 100%;           /* Allow the text to span the full width */
+            text-align: center;    /* Center-align the text */
+            color: black;          /* Set text color to black for visibility */
+            font-size: 24px;       /* Increase font size for readability */
+            font-family: Arial, sans-serif; /* Use a clean, sans-serif font */
+            font-weight: bold;     /* Make the text bold */
+            pointer-events: none;  /* Allow mouse events to pass through the text */
+        }
+    </style>
+</head>
+<body>
+<!-- Container for the Three.js renderer -->
+<div id="container"></div>
+<!-- Overlay text displaying the molecule name and formula -->
+<div id="overlay-text">Methane CH<sub>4</sub></div>
+
+<!-- Import external libraries: jQuery and Three.js -->
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.2.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.94.0/build/three.min.js"></script>
+
+<script>
+    /**
+     * Methane Molecule 3D Visualization with Three.js
+     */
+
+        // Initialize the Three.js scene
+    var scene = new THREE.Scene();
+
+    // Set up the camera with a perspective projection
+    var camera = new THREE.PerspectiveCamera(
+        45,                                     // Field of view in degrees
+        window.innerWidth / window.innerHeight, // Aspect ratio based on window size
+        0.1,                                    // Near clipping plane
+        1000                                    // Far clipping plane
+    );
+
+    // Position the camera level with the molecule, but zoom out a bit
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0); // Ensure the camera looks at the center of the scene
+
+    // Initialize the WebGL renderer with antialiasing for smoother edges
+    var renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight); // Match renderer size to window size
+    renderer.setClearColor(0x000000); // Set background color to black
+    renderer.shadowMap.enabled = true; // Enable shadow mapping for realistic shadows
+
+    // Append the renderer's canvas element to the container div
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    // Create a group to hold all parts of the molecule for collective transformations
+    var moleculeGroup = new THREE.Group();
+
+    // Define materials for the atoms and bonds with appropriate colors and shininess
+    var carbonMaterial = new THREE.MeshPhongMaterial({
+        color: 0xff0000,  // Red color for carbon atoms
+        shininess: 80     // High shininess for a glossy appearance
+    });
+
+    var hydrogenMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0000ff,  // Blue color for hydrogen atoms
+        shininess: 80     // High shininess for a glossy appearance
+    });
+
+    var bondMaterial = new THREE.MeshPhongMaterial({
+        color: 0xffffff,  // White color for bonds
+        emissive: 0x555555 // Light gray emissive color for subtle glow
+    });
+
+    // Create the central carbon atom as a sphere geometry
+    var carbonGeometry = new THREE.SphereGeometry(
+        0.8,  // Radius of the sphere
+        32,   // Number of horizontal segments
+        32    // Number of vertical segments
+    );
+    var carbonAtom = new THREE.Mesh(carbonGeometry, carbonMaterial);
+    carbonAtom.castShadow = true; // Enable casting shadows for realism
+    moleculeGroup.add(carbonAtom); // Add the carbon atom to the molecule group
+
+    // Set the bond length between the carbon and hydrogen atoms
+    var bondLength = 2;
+
+    // Precompute constants for positions
+    var sqrt2 = Math.sqrt(2);
+    var sqrt6 = Math.sqrt(6);
+    var oneThird = 1 / 3;
+
+    // Define positions for the four hydrogen atoms to form a proper tetrahedron.
+    var hydrogenPositions = [
+        new THREE.Vector3(0, bondLength, 0),  // Hydrogen pointing straight up (Y-axis)
+        new THREE.Vector3((2 * sqrt2 / 3) * bondLength, -oneThird * bondLength, 0),  // Second hydrogen
+        new THREE.Vector3((-sqrt2 / 3) * bondLength, -oneThird * bondLength, (sqrt6 / 3) * bondLength),  // Third hydrogen
+        new THREE.Vector3((-sqrt2 / 3) * bondLength, -oneThird * bondLength, (-sqrt6 / 3) * bondLength)   // Fourth hydrogen
+    ];
+
+    // Helper function to create a bond cylinder
+    function createBondMesh(pointA, pointB, material) {
+        var direction = new THREE.Vector3().subVectors(pointB, pointA);
+        var bondLength = direction.length();
+        var bondGeometry = new THREE.CylinderGeometry(0.1, 0.1, bondLength, 32);
+
+        var bond = new THREE.Mesh(bondGeometry, material);
+
+        // Compute midpoint between pointA and pointB
+        var midpoint = new THREE.Vector3().addVectors(pointA, pointB).multiplyScalar(0.5);
+        bond.position.copy(midpoint);
+
+        // Orient the bond to point from carbon to hydrogen
+        bond.lookAt(pointB);
+        bond.rotateX(Math.PI / 2); // Align the cylinder with the bond direction
+
+        bond.castShadow = true;    // Enable shadows
+
+        return bond;
+    }
+
+    // Loop through each hydrogen position to create atoms and bonds
+    hydrogenPositions.forEach(function(position) {
+        // Create the hydrogen atom as a smaller sphere
+        var hydrogenGeometry = new THREE.SphereGeometry(
+            0.45,  // Radius of the sphere
+            32,    // Number of horizontal segments
+            32     // Number of vertical segments
+        );
+        var hydrogenAtom = new THREE.Mesh(hydrogenGeometry, hydrogenMaterial);
+        hydrogenAtom.position.copy(position); // Position the hydrogen atom
+        hydrogenAtom.castShadow = true;       // Enable shadows
+        moleculeGroup.add(hydrogenAtom);      // Add to the molecule group
+
+        // Create the bond between carbon and hydrogen
+        var bond = createBondMesh(carbonAtom.position, position, bondMaterial);
+
+        moleculeGroup.add(bond);   // Add the bond to the molecule group
+    });
+
+    // Add the entire molecule group to the scene
+    scene.add(moleculeGroup);
+
+    // Create a green ground plane to receive shadows, enhancing depth perception
+    var planeGeometry = new THREE.PlaneGeometry(20, 20);
+    var planeMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 }); // Green color for the ground
+    var plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane.rotateX(-Math.PI / 2); // Rotate the plane to lie horizontally
+    plane.position.y = -2.7;       // Position the plane slightly below the molecule
+    plane.receiveShadow = true;  // Enable the plane to receive shadows
+    scene.add(plane);
+
+    // Add a directional light to simulate sunlight and cast shadows
+    var directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(20, 30, 10); // Position the light at an oblique angle
+    directionalLight.castShadow = true;        // Enable the light to cast shadows
+
+    // Configure shadow properties for better quality and performance
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+
+    // Add the directional light to the scene
+    scene.add(directionalLight);
+
+    // Add ambient light to provide subtle background illumination
+    var ambientLight = new THREE.AmbientLight(0x404040); // Soft white ambient light
+    scene.add(ambientLight);
+
+    // Variables to handle mouse interactions and rotation momentum
+    var isMouseDown = false;                    // Flag to check if the mouse button is pressed
+    var previousMousePosition = { x: 0, y: 0 }; // Stores the last mouse position
+    var velocity = new THREE.Vector2(0, 0);     // Angular velocity vector for inertia
+    var damping = 0.96;                         // Damping factor to simulate friction
+
+    // Event listener for mouse down event to initiate rotation
+    renderer.domElement.addEventListener('mousedown', function(event) {
+        isMouseDown = true; // Set the flag to indicate mouse is pressed
+        previousMousePosition.x = event.clientX; // Record the initial mouse X position
+        previousMousePosition.y = event.clientY; // Record the initial mouse Y position
+        velocity.set(0, 0); // Reset velocity when the user starts dragging
+    });
+
+    // Event listener for mouse move event to update rotation
+    renderer.domElement.addEventListener('mousemove', function(event) {
+        if (!isMouseDown) return; // Only proceed if the mouse button is pressed
+
+        // Calculate the change in mouse position
+        var deltaMove = {
+            x: event.clientX - previousMousePosition.x,
+            y: event.clientY - previousMousePosition.y
+        };
+
+        // Calculate rotation quaternion based on mouse movement, using radians directly
+        let deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+            deltaMove.y * 0.005, // Rotation around X-axis (in radians)
+            deltaMove.x * 0.005, // Rotation around Y-axis (in radians)
+            0,                   // No rotation around Z-axis
+            'XYZ'                // Rotation order
+        ));
+
+        // Apply the rotation to the molecule group
+        moleculeGroup.quaternion.multiplyQuaternions(deltaRotationQuaternion, moleculeGroup.quaternion);
+
+        // Update angular velocity for inertia effect
+        velocity.x = deltaMove.x;
+        velocity.y = deltaMove.y;
+
+        // Update the previous mouse position for the next movement calculation
+        previousMousePosition.x = event.clientX;
+        previousMousePosition.y = event.clientY;
+    });
+
+    // Event listener for mouse up event to stop rotation
+    document.addEventListener('mouseup', function(event) {
+        isMouseDown = false; // Reset the flag as mouse button is released
+    });
+
+    // Animation loop to render the scene and handle inertia
+    function animate() {
+        requestAnimationFrame(animate); // Request the next frame
+
+        // Apply inertia if the mouse is not pressed
+        if (!isMouseDown) {
+            // Apply damping to simulate friction and gradually reduce velocity
+            velocity.multiplyScalar(damping);
+
+            // Calculate rotation based on current velocity, using radians directly
+            var deltaRotationQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+                velocity.y * 0.01, // Rotation around X-axis (in radians)
+                velocity.x * 0.01, // Rotation around Y-axis (in radians)
+                0,                  // No rotation around Z-axis
+                'XYZ'               // Rotation order
+            ));
+
+            // Apply the rotation to the molecule group
+            moleculeGroup.quaternion.multiplyQuaternions(deltaRotationQuaternion, moleculeGroup.quaternion);
+
+            // Stop rotation when velocity is below a threshold
+            if (velocity.length() < 0.001) {
+                velocity.set(0, 0); // Reset velocity to zero
+            }
+        }
+
+        // Render the scene from the perspective of the camera
+        renderer.render(scene, camera);
+    }
+
+    // Start the animation loop
+    animate();
+
+    // Event listener to handle window resize and maintain aspect ratio
+    window.addEventListener('resize', function() {
+        // Update camera aspect ratio and projection matrix
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+
+        // Update renderer size to match new window dimensions
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
